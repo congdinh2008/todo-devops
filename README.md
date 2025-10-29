@@ -509,6 +509,7 @@ Comprehensive documentation is available in the `/docs` directory:
 | [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) | CI/CD pipeline documentation and workflows |
 | [Setup-Guide.md](docs/Setup-Guide.md) | Detailed development environment setup |
 | [Deployment-Guide.md](docs/Deployment-Guide.md) | Production deployment instructions |
+| [Docker-Guide.md](docs/Docker-Guide.md) | **Docker containerization guide with troubleshooting** |
 
 ## 🔒 Security Features
 
