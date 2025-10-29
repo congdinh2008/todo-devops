@@ -1,20 +1,21 @@
-import { useState, useEffect } from 'react';
-import './App.css';
+import { useState, useEffect } from 'react'
+import './App.css'
 
 function App() {
-  const [backendStatus, setBackendStatus] = useState<string>('Checking...');
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+  const [backendStatus, setBackendStatus] = useState<string>('Checking...')
+  const apiBaseUrl =
+    import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/health`)
-      .then(response => response.json())
-      .then(data => {
-        setBackendStatus(`Connected - ${data.message}`);
+      .then((response) => response.json())
+      .then((data) => {
+        setBackendStatus(`Connected - ${data.message}`)
       })
       .catch(() => {
-        setBackendStatus('Backend not available');
-      });
-  }, [apiBaseUrl]);
+        setBackendStatus('Backend not available')
+      })
+  }, [apiBaseUrl])
 
   return (
     <div className="App">
@@ -29,7 +30,9 @@ function App() {
           </div>
           <div className="status-item">
             <span className="status-label">Backend:</span>
-            <span className={`status-value ${backendStatus.includes('Connected') ? 'success' : 'error'}`}>
+            <span
+              className={`status-value ${backendStatus.includes('Connected') ? 'success' : 'error'}`}
+            >
               {backendStatus}
             </span>
           </div>
@@ -41,7 +44,10 @@ function App() {
         <div className="info-card">
           <h3>🐳 Docker Setup Complete!</h3>
           <ul>
-            <li>✓ Multi-stage builds (Backend: Maven + JRE, Frontend: Node + Nginx)</li>
+            <li>
+              ✓ Multi-stage builds (Backend: Maven + JRE, Frontend: Node +
+              Nginx)
+            </li>
             <li>✓ Non-root users for security</li>
             <li>✓ Health checks configured</li>
             <li>✓ Environment variables support</li>
@@ -50,7 +56,7 @@ function App() {
         </div>
       </header>
     </div>
-  );
+  )
 }
 
-export default App;
+export default App
