@@ -205,13 +205,13 @@ backend:
 #### Frontend Service
 ```yaml
 frontend:
-  build: ./frontend
+  build:
+    context: ./frontend
+    args:
+      - VITE_API_BASE_URL
   depends_on:
     backend:
       condition: service_healthy
-  build:
-    args:
-      - VITE_API_BASE_URL
   healthcheck:
     test: ["CMD", "wget", "--spider", "http://localhost:3000/health"]
     interval: 30s
