@@ -112,7 +112,12 @@ todo-devops/
 
 ### Prerequisites
 
-Ensure you have the following installed:
+**For Docker Deployment (Recommended):**
+- **Docker 24+** ([Download](https://www.docker.com/))
+- **Docker Compose 2.0+** (included with Docker Desktop)
+- **Git** ([Download](https://git-scm.com/))
+
+**For Local Development:**
 - **Java 21** or higher ([Download](https://adoptium.net/))
 - **Node.js 20+** and npm 10+ ([Download](https://nodejs.org/))
 - **Maven 3.8+** ([Download](https://maven.apache.org/))
@@ -121,17 +126,43 @@ Ensure you have the following installed:
 
 ### Option 1: Using Docker Compose (Recommended)
 
+This is the fastest way to get the entire application stack running:
+
 ```bash
 # Clone the repository
 git clone https://github.com/congdinh2008/todo-devops.git
 cd todo-devops
 
-# Start all services with Docker Compose
+# Copy and configure environment variables (optional)
+cp .env.example .env
+# Edit .env if you need to change default values
+
+# Start all services (backend, frontend, database)
 docker-compose up -d
 
-# Backend will be available at http://localhost:8080
-# Frontend will be available at http://localhost:3000
-# PostgreSQL will be available at localhost:5432
+# View logs
+docker-compose logs -f
+
+# Services will be available at:
+# - Frontend: http://localhost:3000
+# - Backend API: http://localhost:8080
+# - Backend Swagger: http://localhost:8080/swagger-ui.html
+# - PostgreSQL: localhost:5432
+```
+
+**What happens:**
+- PostgreSQL database starts and initializes
+- Backend builds from source and starts (waits for database)
+- Frontend builds from source and starts (waits for backend)
+- All services have health checks and auto-restart
+
+**To stop:**
+```bash
+# Stop services
+docker-compose down
+
+# Stop and remove volumes (clean slate)
+docker-compose down -v
 ```
 
 ### Option 2: Manual Setup
@@ -201,6 +232,269 @@ cd frontend
 npm test                    # Run tests
 npm run test:coverage       # Generate coverage report
 ```
+
+## 🐳 Docker Deployment
+
+This project is fully dockerized with multi-stage builds for optimal image size and security.
+
+### Quick Start with Docker Compose
+
+The easiest way to run the entire stack is with Docker Compose:
+
+```bash
+# Clone the repository
+git clone https://github.com/congdinh2008/todo-devops.git
+cd todo-devops
+
+# Copy environment file and configure if needed
+cp .env.example .env
+
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+**Services will be available at:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8080
+- Backend Swagger UI: http://localhost:8080/swagger-ui.html
+- PostgreSQL: localhost:5432
+
+### Building Individual Images
+
+#### Backend Image
+```bash
+cd backend
+docker build -t todo-backend:latest .
+
+# Run backend container
+docker run -d \
+  --name todo-backend \
+  -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/tododb \
+  -e SPRING_DATASOURCE_USERNAME=todouser \
+  -e SPRING_DATASOURCE_PASSWORD=todopass \
+  todo-backend:latest
+```
+
+#### Frontend Image
+```bash
+cd frontend
+docker build -t todo-frontend:latest \
+  --build-arg VITE_API_BASE_URL=http://localhost:8080/api .
+
+# Run frontend container
+docker run -d \
+  --name todo-frontend \
+  -p 3000:3000 \
+  todo-frontend:latest
+```
+
+### Docker Image Features
+
+#### Backend Image
+- ✅ **Multi-stage build** for minimal image size
+- ✅ **Java 21 JRE** (Alpine-based) for production
+- ✅ **Non-root user** for security
+- ✅ **Health checks** via Spring Boot Actuator
+- ✅ **JVM optimized** for containers
+- ✅ **No hardcoded credentials** - all via environment variables
+
+#### Frontend Image
+- ✅ **Multi-stage build** with Node.js builder and Nginx runtime
+- ✅ **Nginx 1.25** (Alpine-based) for serving static files
+- ✅ **Non-root user** for security
+- ✅ **Gzip compression** enabled
+- ✅ **Security headers** configured
+- ✅ **Health check endpoint** at /health
+- ✅ **Build-time environment variables** support
+
+### Environment Variables
+
+All configuration is done through environment variables. See `.env.example` for available options:
+
+```bash
+# Database Configuration
+POSTGRES_DB=tododb
+POSTGRES_USER=todouser
+POSTGRES_PASSWORD=todopass
+POSTGRES_PORT=5432
+
+# Backend Configuration
+BACKEND_PORT=8080
+SPRING_PROFILE=prod
+JWT_SECRET=your-secret-key-min-256-bits
+JWT_EXPIRATION=86400000
+
+# Frontend Configuration
+FRONTEND_PORT=3000
+VITE_API_BASE_URL=http://localhost:8080/api
+VITE_APP_NAME=Todo Application
+```
+
+**⚠️ Security Note:** Never commit `.env` file to version control. Always use strong, unique passwords and secrets in production.
+
+### Docker Compose Commands
+
+```bash
+# Start services in detached mode
+docker-compose up -d
+
+# Start with build (force rebuild images)
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f [service-name]
+
+# Check service status
+docker-compose ps
+
+# Execute command in running container
+docker-compose exec backend sh
+docker-compose exec frontend sh
+
+# Stop services
+docker-compose stop
+
+# Stop and remove containers, networks
+docker-compose down
+
+# Stop and remove everything including volumes
+docker-compose down -v
+
+# Scale services (if needed)
+docker-compose up -d --scale backend=2
+```
+
+### Health Checks
+
+All services include health checks:
+
+```bash
+# Check backend health
+curl http://localhost:8080/actuator/health
+
+# Check frontend health
+curl http://localhost:3000/health
+
+# Check PostgreSQL health
+docker-compose exec postgres pg_isready -U todouser -d tododb
+
+# View health status in Docker
+docker-compose ps
+```
+
+### Troubleshooting
+
+#### Container won't start
+```bash
+# Check logs for errors
+docker-compose logs -f [service-name]
+
+# Check container status
+docker-compose ps
+
+# Restart specific service
+docker-compose restart [service-name]
+```
+
+#### Database connection issues
+```bash
+# Verify PostgreSQL is healthy
+docker-compose ps postgres
+
+# Check database logs
+docker-compose logs postgres
+
+# Connect to database manually
+docker-compose exec postgres psql -U todouser -d tododb
+```
+
+#### Port conflicts
+```bash
+# Change ports in .env file
+BACKEND_PORT=8081
+FRONTEND_PORT=3001
+POSTGRES_PORT=5433
+
+# Restart services
+docker-compose down
+docker-compose up -d
+```
+
+#### Image build fails
+```bash
+# Clear Docker build cache
+docker-compose build --no-cache
+
+# Remove old images
+docker image prune -a
+
+# Check disk space
+docker system df
+```
+
+#### Performance issues
+```bash
+# Monitor resource usage
+docker stats
+
+# Set resource limits in docker-compose.yml
+services:
+  backend:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+```
+
+### Production Deployment
+
+For production deployment:
+
+1. **Use environment-specific configuration:**
+   ```bash
+   cp .env.example .env.production
+   # Edit .env.production with production values
+   docker-compose --env-file .env.production up -d
+   ```
+
+2. **Use specific image tags:**
+   ```yaml
+   backend:
+     image: todo-backend:1.0.0
+   frontend:
+     image: todo-frontend:1.0.0
+   ```
+
+3. **Enable HTTPS:**
+   - Add reverse proxy (Nginx/Traefik)
+   - Configure SSL certificates
+   - Update CORS settings
+
+4. **Use Docker secrets for sensitive data:**
+   ```yaml
+   secrets:
+     db_password:
+       file: ./secrets/db_password.txt
+   services:
+     postgres:
+       secrets:
+         - db_password
+   ```
+
+5. **Set up monitoring and logging:**
+   - Container logs aggregation
+   - Health check alerts
+   - Resource monitoring
+
+See [Deployment-Guide.md](docs/Deployment-Guide.md) for comprehensive production deployment instructions.
 
 ## 📚 Documentation
 
