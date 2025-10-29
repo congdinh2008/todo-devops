@@ -199,7 +199,7 @@ docker build -t todo-frontend:local \
 - [CI/CD Setup Guide](CI-CD-Setup-Guide.md) - Detailed setup instructions
 - [CI/CD Diagram](CI-CD-Diagram.md) - Pipeline architecture
 - [Trivy Documentation](https://github.com/aquasecurity/trivy)
-- [OWASP Dependency Check](https://owasp.org/www-project-dependency-check/)
+- [OWASP Dependency Check](https://jeremylong.github.io/DependencyCheck/)
 
 ---
 

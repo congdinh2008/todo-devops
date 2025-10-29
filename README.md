@@ -4,6 +4,8 @@
 [![Frontend CI/CD](https://github.com/congdinh2008/todo-devops/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/congdinh2008/todo-devops/actions/workflows/frontend-ci.yml)
 [![PR Validation](https://github.com/congdinh2008/todo-devops/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/congdinh2008/todo-devops/actions/workflows/pr-validation.yml)
 
+> **Note**: If you fork this repository, update the repository name in the badge URLs above to match your GitHub username.
+
 🚀 Modern, enterprise-grade Todo application built with **Clean Architecture**, featuring a Java Spring Boot backend and React TypeScript frontend, complete with comprehensive DevOps practices.
 
 ## 📋 Project Overview
