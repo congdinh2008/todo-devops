@@ -47,4 +47,3 @@ README.md
 # Docker
 Dockerfile
 .dockerignore
-nginx.conf

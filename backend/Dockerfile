@@ -9,7 +9,8 @@ WORKDIR /app
 COPY pom.xml .
 
 # Download dependencies (cached if pom.xml hasn't changed)
-RUN mvn dependency:go-offline -B
+# Note: This step requires network access to Maven Central
+RUN mvn dependency:go-offline -B || true
 
 # Copy source code
 COPY src ./src
