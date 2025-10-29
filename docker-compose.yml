@@ -6,55 +6,88 @@ services:
     image: postgres:16-alpine
     container_name: todo-postgres
     environment:
-      POSTGRES_DB: tododb
-      POSTGRES_USER: todouser
-      POSTGRES_PASSWORD: todopass
+      POSTGRES_DB: ${POSTGRES_DB:-tododb}
+      POSTGRES_USER: ${POSTGRES_USER:-todouser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-todopass}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - todo-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U todouser -d tododb"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-todouser} -d ${POSTGRES_DB:-tododb}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   # Backend Service (Spring Boot)
-  # Uncomment when backend is ready
-  # backend:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile
-  #   container_name: todo-backend
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tododb
-  #     SPRING_DATASOURCE_USERNAME: todouser
-  #     SPRING_DATASOURCE_PASSWORD: todopass
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - todo-network
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        - MAVEN_OPTS=-Dmaven.repo.local=/root/.m2/repository
+    image: todo-backend:latest
+    container_name: todo-backend
+    environment:
+      # Database configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-tododb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-todouser}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-todopass}
+      # JPA configuration
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_DDL_AUTO:-update}
+      SPRING_JPA_SHOW_SQL: ${SPRING_JPA_SHOW_SQL:-false}
+      # JWT configuration
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-in-production-min-256-bits}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      # Application configuration
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-prod}
+      SERVER_PORT: 8080
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - todo-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
-  # Frontend Service (React + Vite)
-  # Uncomment when frontend is ready
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile
-  #   container_name: todo-frontend
-  #   environment:
-  #     VITE_API_BASE_URL: http://backend:8080/api
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     - backend
-  #   networks:
-  #     - todo-network
+  # Frontend Service (React + Vite + Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080/api}
+        - VITE_APP_NAME=${VITE_APP_NAME:-Todo Application}
+    image: todo-frontend:latest
+    container_name: todo-frontend
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=3000
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - todo-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
   postgres-data:
