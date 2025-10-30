@@ -514,6 +514,7 @@ Comprehensive documentation is available in the `/docs` directory:
 | [Architecture.md](docs/Architecture.md) | System architecture and design decisions |
 | [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) | CI/CD pipeline documentation and workflows |
 | [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md) | **GitHub Actions CI/CD setup and troubleshooting guide** |
+| [GitLab-CI-CD-Setup-Guide.md](docs/GitLab-CI-CD-Setup-Guide.md) | **GitLab CI/CD setup and troubleshooting guide** |
 | [Setup-Guide.md](docs/Setup-Guide.md) | Detailed development environment setup |
 | [Deployment-Guide.md](docs/Deployment-Guide.md) | Production deployment instructions |
 | [Docker-Guide.md](docs/Docker-Guide.md) | Docker containerization guide with troubleshooting |
@@ -532,7 +533,12 @@ Comprehensive documentation is available in the `/docs` directory:
 
 ## 🚀 CI/CD Pipeline
 
-This project includes production-ready CI/CD pipelines with GitHub Actions:
+This project includes production-ready CI/CD pipelines for **GitHub Actions** and **GitLab CI/CD**:
+
+### Platform Support
+- ✅ **GitHub Actions** - `.github/workflows/` (see [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md))
+- ✅ **GitLab CI/CD** - `.gitlab-ci.yml` (see [GitLab-CI-CD-Setup-Guide.md](docs/GitLab-CI-CD-Setup-Guide.md))
+- 🔄 **Azure DevOps** - See [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) for configuration examples
 
 ### Backend Pipeline
 - ✅ **Build & Test**: Maven compilation with JUnit tests and PostgreSQL service
@@ -556,22 +562,30 @@ This project includes production-ready CI/CD pipelines with GitHub Actions:
 - ✅ **Branch Protection**: Ensures tests pass before merging
 
 ### Features
-- 🔐 **Secrets Management**: Docker Hub credentials via GitHub Secrets
+- 🔐 **Secrets Management**: Credentials via GitHub Secrets / GitLab CI/CD Variables
 - 🐳 **Docker Images**: Automatic tagging with branch names and commit SHAs
-- 🛡️ **Security First**: Multiple layers of security scanning
-- 📊 **Coverage Reporting**: Integrated with Codecov
+- 🛡️ **Security First**: Multiple layers of security scanning (OWASP, Trivy, npm audit)
+- 📊 **Coverage Reporting**: Integrated code coverage tracking
 - 🔔 **Failure Notifications**: Automated alerts on pipeline failures
 - ⚡ **Optimized**: Caching for faster builds (Maven, npm, Docker layers)
+- 🌍 **Multi-Environment**: Support for dev, staging, and production deployments
 
 ### Getting Started with CI/CD
+
+**GitHub Actions:**
 1. **Configure Secrets**: Add `DOCKER_USERNAME` and `DOCKER_PASSWORD` in repository settings
 2. **Push Changes**: Workflows automatically trigger on push to main/develop
-3. **Create PR**: PR validation runs automatically on pull requests
-4. **View Results**: Check Actions tab for workflow runs and artifacts
+3. **View Results**: Check Actions tab for workflow runs and artifacts
 
-For detailed setup instructions, see [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md).
+**GitLab CI/CD:**
+1. **Configure Variables**: Add `DOCKER_USERNAME` and `DOCKER_PASSWORD` in Settings → CI/CD → Variables
+2. **Push Changes**: Pipeline automatically triggers on push to main/develop
+3. **View Results**: Check CI/CD → Pipelines for pipeline runs and artifacts
 
-See [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) for detailed pipeline documentation.
+For detailed setup instructions:
+- GitHub Actions: [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md)
+- GitLab CI/CD: [GitLab-CI-CD-Setup-Guide.md](docs/GitLab-CI-CD-Setup-Guide.md)
+- Pipeline Architecture: [CI-CD-Diagram.md](docs/CI-CD-Diagram.md)
 
 ## 🤝 Contributing
 

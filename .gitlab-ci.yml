@@ -1,0 +1,481 @@
+# GitLab CI/CD Pipeline for Todo Application
+# Monorepo setup with parallel jobs for backend and frontend
+
+# ============================================================================
+# Global Configuration
+# ============================================================================
+
+# Define pipeline stages
+stages:
+  - test
+  - security-scan
+  - build-image
+  - deploy
+
+# Global variables
+variables:
+  # Docker configuration
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_BUILDKIT: "1"
+  
+  # Backend configuration
+  JAVA_VERSION: "21"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+  
+  # Frontend configuration
+  NODE_VERSION: "20"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  
+  # Security scanning
+  TRIVY_CACHE_DIR: "$CI_PROJECT_DIR/.trivycache"
+  
+  # Image names (use CI/CD variables for credentials)
+  BACKEND_IMAGE: "$DOCKER_USERNAME/todo-backend"
+  FRONTEND_IMAGE: "$DOCKER_USERNAME/todo-frontend"
+
+# Default configuration for all jobs
+default:
+  # Retry failed jobs
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+# ============================================================================
+# Templates (DRY - Don't Repeat Yourself)
+# ============================================================================
+
+# Template for backend jobs
+.backend-base:
+  image: maven:3.9-eclipse-temurin-21-alpine
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - backend/**/*
+        - .gitlab-ci.yml
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"
+      changes:
+        - backend/**/*
+        - .gitlab-ci.yml
+  cache:
+    key: backend-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .m2/repository
+      - backend/target
+  before_script:
+    - cd backend
+
+# Template for frontend jobs
+.frontend-base:
+  image: node:20-alpine
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - frontend/**/*
+        - .gitlab-ci.yml
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"
+      changes:
+        - frontend/**/*
+        - .gitlab-ci.yml
+  cache:
+    key: frontend-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .npm
+      - frontend/node_modules
+      - frontend/dist
+  before_script:
+    - cd frontend
+    - npm ci --cache .npm --prefer-offline
+
+# Template for Docker build jobs
+.docker-build-base:
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - docker info
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+# ============================================================================
+# Backend Jobs
+# ============================================================================
+
+# Backend: Build and Test
+backend:test:
+  extends: .backend-base
+  stage: test
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+  variables:
+    POSTGRES_DB: tododb_test
+    POSTGRES_USER: test
+    POSTGRES_PASSWORD: test
+    POSTGRES_HOST_AUTH_METHOD: trust
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tododb_test
+    SPRING_DATASOURCE_USERNAME: test
+    SPRING_DATASOURCE_PASSWORD: test
+  script:
+    # Compile the project
+    - echo "Building backend..."
+    - mvn $MAVEN_CLI_OPTS clean compile
+    
+    # Run tests
+    - echo "Running backend tests..."
+    - mvn $MAVEN_CLI_OPTS test
+    
+    # Generate coverage report
+    - echo "Generating JaCoCo coverage report..."
+    - mvn $MAVEN_CLI_OPTS jacoco:report
+    
+    # Build JAR package
+    - echo "Building JAR package..."
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    name: backend-test-results
+    when: always
+    expire_in: 30 days
+    paths:
+      - backend/target/surefire-reports/
+      - backend/target/site/jacoco/
+      - backend/target/*.jar
+    reports:
+      junit: backend/target/surefire-reports/TEST-*.xml
+  coverage: '/Total.*?([0-9]{1,3})%/'
+
+# Backend: Security Scanning
+backend:security-scan:
+  extends: .backend-base
+  stage: security-scan
+  needs:
+    - backend:test
+  script:
+    # OWASP Dependency Check
+    - echo "Running OWASP Dependency Check..."
+    - mvn $MAVEN_CLI_OPTS org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 || true
+    
+    # Trivy filesystem scan
+    - echo "Running Trivy security scan..."
+    - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apk add --no-cache gnupg && apk add --no-cache wget
+    - wget -qO /tmp/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
+    - tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+    - mkdir -p $TRIVY_CACHE_DIR
+    - trivy fs --cache-dir $TRIVY_CACHE_DIR --exit-code 0 --severity CRITICAL,HIGH --format json --output backend-trivy-results.json .
+    - trivy fs --cache-dir $TRIVY_CACHE_DIR --exit-code 0 --severity CRITICAL,HIGH .
+  artifacts:
+    name: backend-security-reports
+    when: always
+    expire_in: 30 days
+    paths:
+      - backend/target/dependency-check-report.html
+      - backend-trivy-results.json
+  allow_failure: true
+
+# Backend: Docker Build and Push
+backend:build-image:
+  extends: .docker-build-base
+  stage: build-image
+  needs:
+    - backend:test
+    - backend:security-scan
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"
+      changes:
+        - backend/**/*
+        - .gitlab-ci.yml
+  script:
+    # Build and tag Docker image
+    - echo "Building backend Docker image..."
+    - |
+      docker build \
+        --cache-from $BACKEND_IMAGE:buildcache \
+        --tag $BACKEND_IMAGE:$CI_COMMIT_REF_SLUG \
+        --tag $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA \
+        --file backend/Dockerfile \
+        backend/
+    
+    # Tag as latest for main branch
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        docker tag $BACKEND_IMAGE:$CI_COMMIT_REF_SLUG $BACKEND_IMAGE:latest
+      fi
+    
+    # Push all tags
+    - echo "Pushing backend Docker image to Docker Hub..."
+    - docker push $BACKEND_IMAGE:$CI_COMMIT_REF_SLUG
+    - docker push $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        docker push $BACKEND_IMAGE:latest
+      fi
+    
+    # Scan Docker image with Trivy
+    - echo "Scanning Docker image with Trivy..."
+    - wget -qO /tmp/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
+    - tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+    - trivy image --exit-code 0 --severity CRITICAL,HIGH $BACKEND_IMAGE:$CI_COMMIT_REF_SLUG
+  artifacts:
+    name: backend-image-info
+    expire_in: 7 days
+    paths:
+      - backend/Dockerfile
+
+# Backend: Deploy to Development
+backend:deploy-dev:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - backend:build-image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: on_success
+  environment:
+    name: development
+    url: https://dev.example.com
+  script:
+    - echo "Deploying backend to development environment..."
+    - echo "Image: $BACKEND_IMAGE:$CI_COMMIT_REF_SLUG"
+    # Add your deployment commands here (e.g., kubectl, docker-compose, etc.)
+    - echo "Deployment to dev environment completed"
+  only:
+    - develop
+
+# Backend: Deploy to Staging
+backend:deploy-staging:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - backend:build-image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+  environment:
+    name: staging
+    url: https://staging.example.com
+  script:
+    - echo "Deploying backend to staging environment..."
+    - echo "Image: $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA"
+    # Add your deployment commands here
+    - echo "Deployment to staging environment completed"
+  only:
+    - main
+
+# Backend: Deploy to Production
+backend:deploy-prod:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - backend:build-image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+  environment:
+    name: production
+    url: https://example.com
+  script:
+    - echo "Deploying backend to production environment..."
+    - echo "Image: $BACKEND_IMAGE:latest"
+    # Add your deployment commands here
+    - echo "Deployment to production environment completed"
+  only:
+    - main
+
+# ============================================================================
+# Frontend Jobs
+# ============================================================================
+
+# Frontend: Build and Test
+frontend:test:
+  extends: .frontend-base
+  stage: test
+  script:
+    # Lint code
+    - echo "Linting frontend code..."
+    - npm run lint
+    
+    # Check formatting
+    - echo "Checking code formatting..."
+    - npm run format -- --check
+    
+    # Run tests
+    - echo "Running frontend tests..."
+    - npm test -- --run
+    
+    # Generate coverage
+    - echo "Generating test coverage..."
+    - npm run test:coverage -- --run
+    
+    # Build application
+    - echo "Building frontend application..."
+    - npm run build
+  artifacts:
+    name: frontend-test-results
+    when: always
+    expire_in: 30 days
+    paths:
+      - frontend/coverage/
+      - frontend/dist/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: frontend/coverage/cobertura-coverage.xml
+  coverage: '/Lines\s*:\s*(\d+\.\d+)%/'
+
+# Frontend: Security Scanning
+frontend:security-scan:
+  extends: .frontend-base
+  stage: security-scan
+  needs:
+    - frontend:test
+  script:
+    # npm audit
+    - echo "Running npm audit..."
+    - npm audit --audit-level=moderate || true
+    
+    # Trivy filesystem scan
+    - echo "Running Trivy security scan..."
+    - apk add --no-cache wget
+    - wget -qO /tmp/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
+    - tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+    - mkdir -p $TRIVY_CACHE_DIR
+    - trivy fs --cache-dir $TRIVY_CACHE_DIR --exit-code 0 --severity CRITICAL,HIGH --format json --output frontend-trivy-results.json .
+    - trivy fs --cache-dir $TRIVY_CACHE_DIR --exit-code 0 --severity CRITICAL,HIGH .
+  artifacts:
+    name: frontend-security-reports
+    when: always
+    expire_in: 30 days
+    paths:
+      - frontend-trivy-results.json
+  allow_failure: true
+
+# Frontend: Docker Build and Push
+frontend:build-image:
+  extends: .docker-build-base
+  stage: build-image
+  needs:
+    - frontend:test
+    - frontend:security-scan
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"
+      changes:
+        - frontend/**/*
+        - .gitlab-ci.yml
+  variables:
+    VITE_API_BASE_URL: "http://localhost:8080/api"
+  script:
+    # Build and tag Docker image
+    - echo "Building frontend Docker image..."
+    - |
+      docker build \
+        --cache-from $FRONTEND_IMAGE:buildcache \
+        --build-arg VITE_API_BASE_URL=$VITE_API_BASE_URL \
+        --tag $FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG \
+        --tag $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA \
+        --file frontend/Dockerfile \
+        frontend/
+    
+    # Tag as latest for main branch
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        docker tag $FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG $FRONTEND_IMAGE:latest
+      fi
+    
+    # Push all tags
+    - echo "Pushing frontend Docker image to Docker Hub..."
+    - docker push $FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG
+    - docker push $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        docker push $FRONTEND_IMAGE:latest
+      fi
+    
+    # Scan Docker image with Trivy
+    - echo "Scanning Docker image with Trivy..."
+    - wget -qO /tmp/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
+    - tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+    - trivy image --exit-code 0 --severity CRITICAL,HIGH $FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG
+  artifacts:
+    name: frontend-image-info
+    expire_in: 7 days
+    paths:
+      - frontend/Dockerfile
+
+# Frontend: Deploy to Development
+frontend:deploy-dev:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - frontend:build-image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: on_success
+  environment:
+    name: development
+    url: https://dev.example.com
+  script:
+    - echo "Deploying frontend to development environment..."
+    - echo "Image: $FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG"
+    # Add your deployment commands here
+    - echo "Deployment to dev environment completed"
+  only:
+    - develop
+
+# Frontend: Deploy to Staging
+frontend:deploy-staging:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - frontend:build-image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+  environment:
+    name: staging
+    url: https://staging.example.com
+  script:
+    - echo "Deploying frontend to staging environment..."
+    - echo "Image: $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA"
+    # Add your deployment commands here
+    - echo "Deployment to staging environment completed"
+  only:
+    - main
+
+# Frontend: Deploy to Production
+frontend:deploy-prod:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - frontend:build-image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+  environment:
+    name: production
+    url: https://example.com
+  script:
+    - echo "Deploying frontend to production environment..."
+    - echo "Image: $FRONTEND_IMAGE:latest"
+    # Add your deployment commands here
+    - echo "Deployment to production environment completed"
+  only:
+    - main
+
+# ============================================================================
+# Pipeline Success/Failure Notifications
+# ============================================================================
+
+# Notify on pipeline completion
+pipeline:notify:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "Pipeline completed!"
+    - echo "Branch: $CI_COMMIT_BRANCH"
+    - echo "Commit: $CI_COMMIT_SHORT_SHA"
+    - echo "Author: $CI_COMMIT_AUTHOR"
+    - echo "Status: $CI_JOB_STATUS"
+    # Add notification webhook here (Slack, Teams, etc.)
+  when: always
