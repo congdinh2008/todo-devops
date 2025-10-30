@@ -517,6 +517,7 @@ Comprehensive documentation is available in the `/docs` directory:
 | [GitLab-CI-CD-Setup-Guide.md](docs/GitLab-CI-CD-Setup-Guide.md) | **GitLab CI/CD setup and troubleshooting guide** |
 | [Azure-DevOps-Setup-Guide.md](docs/Azure-DevOps-Setup-Guide.md) | **Azure DevOps CI/CD setup and troubleshooting guide** |
 | [Azure-DevOps-Quick-Reference.md](docs/Azure-DevOps-Quick-Reference.md) | **Azure DevOps quick reference for common tasks** |
+| [Azure-DevOps-Implementation-Summary.md](docs/Azure-DevOps-Implementation-Summary.md) | **Azure DevOps implementation summary and validation report** |
 | [Setup-Guide.md](docs/Setup-Guide.md) | Detailed development environment setup |
 | [Deployment-Guide.md](docs/Deployment-Guide.md) | Production deployment instructions |
 | [Docker-Guide.md](docs/Docker-Guide.md) | Docker containerization guide with troubleshooting |
