@@ -176,14 +176,14 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
+          username: ${{ vars.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/todo-frontend
+          images: ${{ vars.DOCKER_USERNAME }}/todo-frontend
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -199,13 +199,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VITE_API_BASE_URL=http://localhost:8080/api
-          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/todo-frontend:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/todo-frontend:buildcache,mode=max
+          cache-from: type=registry,ref=${{ vars.DOCKER_USERNAME }}/todo-frontend:buildcache
+          cache-to: type=registry,ref=${{ vars.DOCKER_USERNAME }}/todo-frontend:buildcache,mode=max
       
       - name: Run Trivy vulnerability scanner on image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.DOCKER_USERNAME }}/todo-frontend:${{ github.ref_name }}
+          image-ref: ${{ vars.DOCKER_USERNAME }}/todo-frontend:${{ github.ref_name }}
           format: 'sarif'
           output: 'trivy-image-results.sarif'
       
