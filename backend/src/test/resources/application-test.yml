@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  h2:
+    console:
+      enabled: true
+  security:
+    user:
+      name: user
+      password: password
+
+jwt:
+  secret: test-secret-key-for-testing-purposes-only-min-256-bits-required
+  expiration: 86400000
+
+logging:
+  level:
+    com.congdinh.todo: INFO
+    org.springframework: WARN

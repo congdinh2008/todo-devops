@@ -1,5 +1,11 @@
 # Todo Application - Enterprise DevOps Project
 
+[![Backend CI/CD](https://github.com/congdinh2008/todo-devops/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/congdinh2008/todo-devops/actions/workflows/backend-ci.yml)
+[![Frontend CI/CD](https://github.com/congdinh2008/todo-devops/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/congdinh2008/todo-devops/actions/workflows/frontend-ci.yml)
+[![PR Validation](https://github.com/congdinh2008/todo-devops/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/congdinh2008/todo-devops/actions/workflows/pr-validation.yml)
+
+> **Note**: If you fork this repository, update the repository name in the badge URLs above to match your GitHub username.
+
 🚀 Modern, enterprise-grade Todo application built with **Clean Architecture**, featuring a Java Spring Boot backend and React TypeScript frontend, complete with comprehensive DevOps practices.
 
 ## 📋 Project Overview
@@ -507,9 +513,10 @@ Comprehensive documentation is available in the `/docs` directory:
 | [API-Spec.md](docs/API-Spec.md) | RESTful API endpoints specification with examples |
 | [Architecture.md](docs/Architecture.md) | System architecture and design decisions |
 | [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) | CI/CD pipeline documentation and workflows |
+| [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md) | **GitHub Actions CI/CD setup and troubleshooting guide** |
 | [Setup-Guide.md](docs/Setup-Guide.md) | Detailed development environment setup |
 | [Deployment-Guide.md](docs/Deployment-Guide.md) | Production deployment instructions |
-| [Docker-Guide.md](docs/Docker-Guide.md) | **Docker containerization guide with troubleshooting** |
+| [Docker-Guide.md](docs/Docker-Guide.md) | Docker containerization guide with troubleshooting |
 
 ## 🔒 Security Features
 
@@ -521,13 +528,48 @@ Comprehensive documentation is available in the `/docs` directory:
 - XSS protection
 - CSRF tokens
 - Secure HTTP headers
+- Automated vulnerability scanning (OWASP, Trivy)
 
 ## 🚀 CI/CD Pipeline
 
-This project includes CI/CD configurations for:
-- **GitHub Actions** - Automated testing and deployment
-- **GitLab CI/CD** - Pipeline configuration
-- **Azure DevOps** - Build and release pipelines
+This project includes production-ready CI/CD pipelines with GitHub Actions:
+
+### Backend Pipeline
+- ✅ **Build & Test**: Maven compilation with JUnit tests and PostgreSQL service
+- ✅ **Code Coverage**: JaCoCo coverage reporting (uploaded to Codecov)
+- ✅ **Security Scanning**: OWASP Dependency Check and Trivy vulnerability scanning
+- ✅ **Docker Build & Push**: Automated image builds and pushes to Docker Hub
+- ✅ **Artifacts**: Test results, coverage reports, and security scan results
+
+### Frontend Pipeline
+- ✅ **Build & Test**: npm build with Vitest unit tests
+- ✅ **Code Quality**: ESLint linting and Prettier formatting checks
+- ✅ **Code Coverage**: Vitest coverage reporting (uploaded to Codecov)
+- ✅ **Security Scanning**: npm audit and Trivy vulnerability scanning
+- ✅ **Docker Build & Push**: Automated image builds and pushes to Docker Hub
+- ✅ **Artifacts**: Test results, coverage reports, and security scan results
+
+### PR Validation
+- ✅ **Automated Checks**: Quick validation of changed components on pull requests
+- ✅ **Change Detection**: Automatically detects backend/frontend changes
+- ✅ **Status Reporting**: Comments on PRs with validation summary
+- ✅ **Branch Protection**: Ensures tests pass before merging
+
+### Features
+- 🔐 **Secrets Management**: Docker Hub credentials via GitHub Secrets
+- 🐳 **Docker Images**: Automatic tagging with branch names and commit SHAs
+- 🛡️ **Security First**: Multiple layers of security scanning
+- 📊 **Coverage Reporting**: Integrated with Codecov
+- 🔔 **Failure Notifications**: Automated alerts on pipeline failures
+- ⚡ **Optimized**: Caching for faster builds (Maven, npm, Docker layers)
+
+### Getting Started with CI/CD
+1. **Configure Secrets**: Add `DOCKER_USERNAME` and `DOCKER_PASSWORD` in repository settings
+2. **Push Changes**: Workflows automatically trigger on push to main/develop
+3. **Create PR**: PR validation runs automatically on pull requests
+4. **View Results**: Check Actions tab for workflow runs and artifacts
+
+For detailed setup instructions, see [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md).
 
 See [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) for detailed pipeline documentation.
 

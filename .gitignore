@@ -42,6 +42,8 @@ application-*.properties
 application-*.yml
 !application.properties.example
 !application.yml.example
+!**/test/**/application-*.yml
+!**/test/**/application-*.properties
 
 # Node / NPM
 node_modules/
