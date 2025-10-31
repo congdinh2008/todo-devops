@@ -238,10 +238,7 @@ backend:deploy-dev:
   script:
     - echo "Deploying backend to development environment..."
     - echo "Image: $BACKEND_IMAGE:$CI_COMMIT_REF_SLUG"
-    # Add your deployment commands here (e.g., kubectl, docker-compose, etc.)
     - echo "Deployment to dev environment completed"
-  only:
-    - develop
 
 # Backend: Deploy to Staging
 backend:deploy-staging:
@@ -258,10 +255,7 @@ backend:deploy-staging:
   script:
     - echo "Deploying backend to staging environment..."
     - echo "Image: $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA"
-    # Add your deployment commands here
     - echo "Deployment to staging environment completed"
-  only:
-    - main
 
 # Backend: Deploy to Production
 backend:deploy-prod:
@@ -278,10 +272,7 @@ backend:deploy-prod:
   script:
     - echo "Deploying backend to production environment..."
     - echo "Image: $BACKEND_IMAGE:latest"
-    # Add your deployment commands here
     - echo "Deployment to production environment completed"
-  only:
-    - main
 
 # ============================================================================
 # Frontend Jobs
@@ -418,10 +409,7 @@ frontend:deploy-dev:
   script:
     - echo "Deploying frontend to development environment..."
     - echo "Image: $FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG"
-    # Add your deployment commands here
     - echo "Deployment to dev environment completed"
-  only:
-    - develop
 
 # Frontend: Deploy to Staging
 frontend:deploy-staging:
@@ -438,10 +426,7 @@ frontend:deploy-staging:
   script:
     - echo "Deploying frontend to staging environment..."
     - echo "Image: $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA"
-    # Add your deployment commands here
     - echo "Deployment to staging environment completed"
-  only:
-    - main
 
 # Frontend: Deploy to Production
 frontend:deploy-prod:
@@ -458,10 +443,7 @@ frontend:deploy-prod:
   script:
     - echo "Deploying frontend to production environment..."
     - echo "Image: $FRONTEND_IMAGE:latest"
-    # Add your deployment commands here
     - echo "Deployment to production environment completed"
-  only:
-    - main
 
 # ============================================================================
 # Pipeline Success/Failure Notifications
