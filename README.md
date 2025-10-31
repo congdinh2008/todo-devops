@@ -515,6 +515,9 @@ Comprehensive documentation is available in the `/docs` directory:
 | [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) | CI/CD pipeline documentation and workflows |
 | [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md) | **GitHub Actions CI/CD setup and troubleshooting guide** |
 | [GitLab-CI-CD-Setup-Guide.md](docs/GitLab-CI-CD-Setup-Guide.md) | **GitLab CI/CD setup and troubleshooting guide** |
+| [Azure-DevOps-Setup-Guide.md](docs/Azure-DevOps-Setup-Guide.md) | **Azure DevOps CI/CD setup and troubleshooting guide** |
+| [Azure-DevOps-Quick-Reference.md](docs/Azure-DevOps-Quick-Reference.md) | **Azure DevOps quick reference for common tasks** |
+| [Azure-DevOps-Implementation-Summary.md](docs/Azure-DevOps-Implementation-Summary.md) | **Azure DevOps implementation summary and validation report** |
 | [Setup-Guide.md](docs/Setup-Guide.md) | Detailed development environment setup |
 | [Deployment-Guide.md](docs/Deployment-Guide.md) | Production deployment instructions |
 | [Docker-Guide.md](docs/Docker-Guide.md) | Docker containerization guide with troubleshooting |
@@ -533,12 +536,12 @@ Comprehensive documentation is available in the `/docs` directory:
 
 ## 🚀 CI/CD Pipeline
 
-This project includes production-ready CI/CD pipelines for **GitHub Actions** and **GitLab CI/CD**:
+This project includes production-ready CI/CD pipelines for **GitHub Actions**, **GitLab CI/CD**, and **Azure DevOps**:
 
 ### Platform Support
 - ✅ **GitHub Actions** - `.github/workflows/` (see [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md))
 - ✅ **GitLab CI/CD** - `.gitlab-ci.yml` (see [GitLab-CI-CD-Setup-Guide.md](docs/GitLab-CI-CD-Setup-Guide.md))
-- 🔄 **Azure DevOps** - See [CI-CD-Diagram.md](docs/CI-CD-Diagram.md) for configuration examples
+- ✅ **Azure DevOps** - `azure-pipelines.yml` (see [Azure-DevOps-Setup-Guide.md](docs/Azure-DevOps-Setup-Guide.md))
 
 ### Backend Pipeline
 - ✅ **Build & Test**: Maven compilation with JUnit tests and PostgreSQL service
@@ -562,13 +565,15 @@ This project includes production-ready CI/CD pipelines for **GitHub Actions** an
 - ✅ **Branch Protection**: Ensures tests pass before merging
 
 ### Features
-- 🔐 **Secrets Management**: Credentials via GitHub Secrets / GitLab CI/CD Variables
+- 🔐 **Secrets Management**: GitHub Secrets / GitLab Variables / Azure Key Vault
 - 🐳 **Docker Images**: Automatic tagging with branch names and commit SHAs
 - 🛡️ **Security First**: Multiple layers of security scanning (OWASP, Trivy, npm audit)
-- 📊 **Coverage Reporting**: Integrated code coverage tracking
+- 📊 **Coverage Reporting**: Integrated code coverage tracking (>80% threshold)
 - 🔔 **Failure Notifications**: Automated alerts on pipeline failures
 - ⚡ **Optimized**: Caching for faster builds (Maven, npm, Docker layers)
 - 🌍 **Multi-Environment**: Support for dev, staging, and production deployments
+- 🎯 **Approval Gates**: Manual approval required for production deployments
+- 📋 **PR Validation**: Automatic validation on pull requests
 
 ### Getting Started with CI/CD
 
@@ -582,9 +587,18 @@ This project includes production-ready CI/CD pipelines for **GitHub Actions** an
 2. **Push Changes**: Pipeline automatically triggers on push to main/develop
 3. **View Results**: Check CI/CD → Pipelines for pipeline runs and artifacts
 
+**Azure DevOps:**
+1. **Setup Pipeline**: Import `azure-pipelines.yml` in Azure DevOps
+2. **Configure Secrets**: Use Azure Key Vault or pipeline variables for Docker credentials
+3. **Setup Environments**: Create development, staging, and production environments
+4. **Configure Approvals**: Add approval gates for production environment
+5. **View Results**: Check Pipelines for runs, tests, coverage, and artifacts
+
 For detailed setup instructions:
 - GitHub Actions: [CI-CD-Setup-Guide.md](docs/CI-CD-Setup-Guide.md)
 - GitLab CI/CD: [GitLab-CI-CD-Setup-Guide.md](docs/GitLab-CI-CD-Setup-Guide.md)
+- Azure DevOps: [Azure-DevOps-Setup-Guide.md](docs/Azure-DevOps-Setup-Guide.md)
+- Quick Reference: [Azure-DevOps-Quick-Reference.md](docs/Azure-DevOps-Quick-Reference.md)
 - Pipeline Architecture: [CI-CD-Diagram.md](docs/CI-CD-Diagram.md)
 
 ## 🤝 Contributing

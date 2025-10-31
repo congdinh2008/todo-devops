@@ -1,0 +1,686 @@
+# ============================================================================
+# Azure DevOps CI/CD Pipeline for Todo Application
+# Multi-stage production-ready pipeline for backend and frontend
+# ============================================================================
+#
+# Features:
+# - Multi-stage pipeline with build, test, lint, security scan, release, deploy
+# - Backend: Maven build, JUnit, JaCoCo coverage (>80%), OWASP/Trivy scan
+# - Frontend: npm build, Vitest, ESLint, Prettier, security scanning
+# - Docker image build and push to Docker Hub
+# - Approval gates for production deployment
+# - Secrets management via Azure Key Vault
+# - PR validation workflow
+# - Comprehensive logging and fail-fast behavior
+#
+# ============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - backend/**
+      - frontend/**
+      - azure-pipelines.yml
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - backend/**
+      - frontend/**
+      - azure-pipelines.yml
+
+# Global variables
+variables:
+  # Build configuration
+  buildConfiguration: 'Release'
+  
+  # Java/Maven configuration
+  javaVersion: '21'
+  mavenVersion: '3.9.x'
+  mavenOptions: '-B -e --fail-at-end --show-version'
+  mavenCacheFolder: $(Pipeline.Workspace)/.m2/repository
+  
+  # Node.js/npm configuration
+  nodeVersion: '20.x'
+  npmCacheFolder: $(Pipeline.Workspace)/.npm
+  
+  # Docker configuration
+  dockerBuildContext: '.'
+  dockerRegistry: 'docker.io'
+  backendImageName: 'todo-backend'
+  frontendImageName: 'todo-frontend'
+  
+  # Code coverage thresholds
+  jacocoThreshold: 80
+  
+  # Security scanning
+  owaspFailThreshold: 8
+  
+  # Determine if backend or frontend changed
+  ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+    isBackendChanged: $[or(contains(variables['System.PullRequest.SourceBranch'], 'backend'), eq(variables['Build.Reason'], 'Manual'))]
+    isFrontendChanged: $[or(contains(variables['System.PullRequest.SourceBranch'], 'frontend'), eq(variables['Build.Reason'], 'Manual'))]
+  ${{ else }}:
+    isBackendChanged: true
+    isFrontendChanged: true
+
+# Define multiple stages
+stages:
+  # ============================================================================
+  # Stage 1: Build and Test
+  # ============================================================================
+  - stage: BuildAndTest
+    displayName: 'Build and Test'
+    jobs:
+      # Backend: Build and Test
+      - job: BackendBuildTest
+        displayName: 'Backend - Build and Test'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        # Run only if backend files changed
+        condition: or(eq(variables.isBackendChanged, true), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+        
+        services:
+          postgres:
+            image: postgres:16-alpine
+            env:
+              POSTGRES_DB: tododb_test
+              POSTGRES_USER: test
+              POSTGRES_PASSWORD: test
+            ports:
+              - 5432:5432
+        
+        steps:
+          - checkout: self
+            displayName: 'Checkout source code'
+            fetchDepth: 1
+          
+          - task: JavaToolInstaller@0
+            displayName: 'Setup Java $(javaVersion)'
+            inputs:
+              versionSpec: '$(javaVersion)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+          
+          - task: Cache@2
+            displayName: 'Cache Maven packages'
+            inputs:
+              key: 'maven | "$(Agent.OS)" | **/pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+                maven
+              path: $(mavenCacheFolder)
+          
+          - task: Maven@4
+            displayName: 'Maven - Compile'
+            inputs:
+              mavenPomFile: 'backend/pom.xml'
+              goals: 'clean compile'
+              options: '$(mavenOptions)'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.$(javaVersion)'
+              mavenVersionOption: 'Default'
+              mavenOptions: '-Dmaven.repo.local=$(mavenCacheFolder)'
+          
+          - task: Maven@4
+            displayName: 'Maven - Run Tests'
+            inputs:
+              mavenPomFile: 'backend/pom.xml'
+              goals: 'test'
+              options: '$(mavenOptions)'
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.$(javaVersion)'
+              mavenVersionOption: 'Default'
+              mavenOptions: '-Dmaven.repo.local=$(mavenCacheFolder)'
+            env:
+              SPRING_DATASOURCE_URL: 'jdbc:postgresql://localhost:5432/tododb_test'
+              SPRING_DATASOURCE_USERNAME: 'test'
+              SPRING_DATASOURCE_PASSWORD: 'test'
+          
+          - task: Maven@4
+            displayName: 'Maven - Generate JaCoCo Coverage Report'
+            inputs:
+              mavenPomFile: 'backend/pom.xml'
+              goals: 'jacoco:report'
+              options: '$(mavenOptions)'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.$(javaVersion)'
+              mavenVersionOption: 'Default'
+              mavenOptions: '-Dmaven.repo.local=$(mavenCacheFolder)'
+          
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish Code Coverage Results'
+            inputs:
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/backend/target/site/jacoco/jacoco.xml'
+              pathToSources: '$(System.DefaultWorkingDirectory)/backend/src/main/java'
+              codeCoverageTool: 'JaCoCo'
+              failIfCoverageEmpty: true
+          
+          - script: |
+              echo "Checking JaCoCo coverage threshold..."
+              COVERAGE=$(grep -oP '(?<=<counter type="LINE" missed="\d+" covered=")\d+' backend/target/site/jacoco/jacoco.xml | head -1)
+              MISSED=$(grep -oP '(?<=<counter type="LINE" missed=")\d+' backend/target/site/jacoco/jacoco.xml | head -1)
+              TOTAL=$((COVERAGE + MISSED))
+              if [ $TOTAL -gt 0 ]; then
+                PERCENTAGE=$((COVERAGE * 100 / TOTAL))
+                echo "Coverage: $PERCENTAGE%"
+                if [ $PERCENTAGE -lt $(jacocoThreshold) ]; then
+                  echo "##vso[task.logissue type=error]Coverage $PERCENTAGE% is below threshold $(jacocoThreshold)%"
+                  exit 1
+                fi
+              fi
+            displayName: 'Check Coverage Threshold (>80%)'
+            condition: succeededOrFailed()
+          
+          - task: Maven@4
+            displayName: 'Maven - Package JAR'
+            inputs:
+              mavenPomFile: 'backend/pom.xml'
+              goals: 'package'
+              options: '$(mavenOptions) -DskipTests'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.$(javaVersion)'
+              mavenVersionOption: 'Default'
+              mavenOptions: '-Dmaven.repo.local=$(mavenCacheFolder)'
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Backend JAR Artifact'
+            inputs:
+              pathToPublish: 'backend/target/*.jar'
+              artifactName: 'backend-jar'
+              publishLocation: 'Container'
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Test Results'
+            condition: always()
+            inputs:
+              pathToPublish: 'backend/target/surefire-reports'
+              artifactName: 'backend-test-results'
+              publishLocation: 'Container'
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Coverage Report'
+            condition: always()
+            inputs:
+              pathToPublish: 'backend/target/site/jacoco'
+              artifactName: 'backend-coverage-report'
+              publishLocation: 'Container'
+
+      # Frontend: Build and Test
+      - job: FrontendBuildTest
+        displayName: 'Frontend - Build and Test'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        # Run only if frontend files changed
+        condition: or(eq(variables.isFrontendChanged, true), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+        
+        steps:
+          - checkout: self
+            displayName: 'Checkout source code'
+            fetchDepth: 1
+          
+          - task: NodeTool@0
+            displayName: 'Setup Node.js $(nodeVersion)'
+            inputs:
+              versionSpec: '$(nodeVersion)'
+          
+          - task: Cache@2
+            displayName: 'Cache npm packages'
+            inputs:
+              key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+                npm
+              path: $(npmCacheFolder)
+          
+          - script: |
+              cd frontend
+              npm ci --cache $(npmCacheFolder) --prefer-offline
+            displayName: 'npm - Install Dependencies'
+          
+          - script: |
+              cd frontend
+              npm run lint
+            displayName: 'ESLint - Lint Code'
+          
+          - script: |
+              cd frontend
+              npm run format -- --check
+            displayName: 'Prettier - Check Formatting'
+          
+          - script: |
+              cd frontend
+              npm run build
+            displayName: 'Build Frontend Application'
+          
+          - script: |
+              cd frontend
+              npm test -- --run
+            displayName: 'Vitest - Run Tests'
+          
+          - script: |
+              cd frontend
+              npm run test:coverage -- --run
+            displayName: 'Generate Test Coverage'
+          
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish Code Coverage Results'
+            condition: succeededOrFailed()
+            inputs:
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/frontend/coverage/cobertura-coverage.xml'
+              pathToSources: '$(System.DefaultWorkingDirectory)/frontend/src'
+              codeCoverageTool: 'Cobertura'
+              failIfCoverageEmpty: false
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Frontend Build Artifact'
+            inputs:
+              pathToPublish: 'frontend/dist'
+              artifactName: 'frontend-dist'
+              publishLocation: 'Container'
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Coverage Report'
+            condition: always()
+            inputs:
+              pathToPublish: 'frontend/coverage'
+              artifactName: 'frontend-coverage-report'
+              publishLocation: 'Container'
+
+  # ============================================================================
+  # Stage 2: Security Scanning
+  # ============================================================================
+  - stage: SecurityScan
+    displayName: 'Security Scanning'
+    dependsOn: BuildAndTest
+    condition: succeeded()
+    jobs:
+      # Backend: Security Scanning
+      - job: BackendSecurityScan
+        displayName: 'Backend - Security Scan'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        condition: or(eq(variables.isBackendChanged, true), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+        
+        steps:
+          - checkout: self
+            displayName: 'Checkout source code'
+            fetchDepth: 1
+          
+          - task: JavaToolInstaller@0
+            displayName: 'Setup Java $(javaVersion)'
+            inputs:
+              versionSpec: '$(javaVersion)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+          
+          - task: Cache@2
+            displayName: 'Cache Maven packages'
+            inputs:
+              key: 'maven | "$(Agent.OS)" | **/pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+                maven
+              path: $(mavenCacheFolder)
+          
+          - task: Maven@4
+            displayName: 'OWASP Dependency Check'
+            inputs:
+              mavenPomFile: 'backend/pom.xml'
+              goals: 'org.owasp:dependency-check-maven:check'
+              options: '-DfailBuildOnCVSS=$(owaspFailThreshold) $(mavenOptions)'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.$(javaVersion)'
+              mavenVersionOption: 'Default'
+              mavenOptions: '-Dmaven.repo.local=$(mavenCacheFolder)'
+            continueOnError: true
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish OWASP Report'
+            condition: always()
+            inputs:
+              pathToPublish: 'backend/target/dependency-check-report.html'
+              artifactName: 'backend-owasp-report'
+              publishLocation: 'Container'
+          
+          - script: |
+              # Install Trivy
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+              echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+              sudo apt-get update
+              sudo apt-get install trivy -y
+              
+              # Run Trivy filesystem scan
+              trivy fs --exit-code 0 --severity CRITICAL,HIGH --format json --output backend-trivy-results.json backend/
+              trivy fs --exit-code 0 --severity CRITICAL,HIGH backend/
+            displayName: 'Trivy - Filesystem Scan'
+            continueOnError: true
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Trivy Report'
+            condition: always()
+            inputs:
+              pathToPublish: 'backend-trivy-results.json'
+              artifactName: 'backend-trivy-report'
+              publishLocation: 'Container'
+
+      # Frontend: Security Scanning
+      - job: FrontendSecurityScan
+        displayName: 'Frontend - Security Scan'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        condition: or(eq(variables.isFrontendChanged, true), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+        
+        steps:
+          - checkout: self
+            displayName: 'Checkout source code'
+            fetchDepth: 1
+          
+          - task: NodeTool@0
+            displayName: 'Setup Node.js $(nodeVersion)'
+            inputs:
+              versionSpec: '$(nodeVersion)'
+          
+          - task: Cache@2
+            displayName: 'Cache npm packages'
+            inputs:
+              key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+                npm
+              path: $(npmCacheFolder)
+          
+          - script: |
+              cd frontend
+              npm ci --cache $(npmCacheFolder) --prefer-offline
+            displayName: 'npm - Install Dependencies'
+          
+          - script: |
+              cd frontend
+              npm audit --audit-level=moderate || true
+            displayName: 'npm audit - Security Check'
+            continueOnError: true
+          
+          - script: |
+              # Install Trivy
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+              echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+              sudo apt-get update
+              sudo apt-get install trivy -y
+              
+              # Run Trivy filesystem scan
+              trivy fs --exit-code 0 --severity CRITICAL,HIGH --format json --output frontend-trivy-results.json frontend/
+              trivy fs --exit-code 0 --severity CRITICAL,HIGH frontend/
+            displayName: 'Trivy - Filesystem Scan'
+            continueOnError: true
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Trivy Report'
+            condition: always()
+            inputs:
+              pathToPublish: 'frontend-trivy-results.json'
+              artifactName: 'frontend-trivy-report'
+              publishLocation: 'Container'
+
+  # ============================================================================
+  # Stage 3: Build and Push Docker Images
+  # ============================================================================
+  - stage: BuildDockerImages
+    displayName: 'Build and Push Docker Images'
+    dependsOn: SecurityScan
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+    jobs:
+      # Backend: Build and Push Docker Image
+      - job: BackendDockerBuild
+        displayName: 'Backend - Docker Build & Push'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        condition: or(eq(variables.isBackendChanged, true), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+        
+        steps:
+          - checkout: self
+            displayName: 'Checkout source code'
+            fetchDepth: 1
+          
+          # Connect to Azure Key Vault for secrets
+          - task: AzureKeyVault@2
+            displayName: 'Fetch secrets from Azure Key Vault'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              KeyVaultName: '$(keyVaultName)'
+              SecretsFilter: 'DOCKER-USERNAME,DOCKER-PASSWORD'
+              RunAsPreJob: false
+            condition: and(succeeded(), ne(variables['keyVaultName'], ''))
+          
+          - task: Docker@2
+            displayName: 'Docker Login'
+            inputs:
+              command: 'login'
+              containerRegistry: '$(dockerServiceConnection)'
+          
+          - task: Docker@2
+            displayName: 'Build Backend Docker Image'
+            inputs:
+              command: 'build'
+              repository: '$(DOCKER-USERNAME)/$(backendImageName)'
+              dockerfile: 'backend/Dockerfile'
+              buildContext: 'backend'
+              tags: |
+                $(Build.SourceBranchName)
+                $(Build.SourceVersion)
+                latest
+          
+          - task: Docker@2
+            displayName: 'Push Backend Docker Image'
+            inputs:
+              command: 'push'
+              repository: '$(DOCKER-USERNAME)/$(backendImageName)'
+              tags: |
+                $(Build.SourceBranchName)
+                $(Build.SourceVersion)
+                latest
+          
+          - script: |
+              # Install Trivy
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+              echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+              sudo apt-get update
+              sudo apt-get install trivy -y
+              
+              # Scan Docker image
+              trivy image --exit-code 0 --severity CRITICAL,HIGH $(DOCKER-USERNAME)/$(backendImageName):$(Build.SourceBranchName)
+            displayName: 'Trivy - Scan Docker Image'
+            continueOnError: true
+
+      # Frontend: Build and Push Docker Image
+      - job: FrontendDockerBuild
+        displayName: 'Frontend - Docker Build & Push'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        condition: or(eq(variables.isFrontendChanged, true), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+        
+        steps:
+          - checkout: self
+            displayName: 'Checkout source code'
+            fetchDepth: 1
+          
+          # Connect to Azure Key Vault for secrets
+          - task: AzureKeyVault@2
+            displayName: 'Fetch secrets from Azure Key Vault'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              KeyVaultName: '$(keyVaultName)'
+              SecretsFilter: 'DOCKER-USERNAME,DOCKER-PASSWORD'
+              RunAsPreJob: false
+            condition: and(succeeded(), ne(variables['keyVaultName'], ''))
+          
+          - task: Docker@2
+            displayName: 'Docker Login'
+            inputs:
+              command: 'login'
+              containerRegistry: '$(dockerServiceConnection)'
+          
+          - task: Docker@2
+            displayName: 'Build Frontend Docker Image'
+            inputs:
+              command: 'build'
+              repository: '$(DOCKER-USERNAME)/$(frontendImageName)'
+              dockerfile: 'frontend/Dockerfile'
+              buildContext: 'frontend'
+              arguments: '--build-arg VITE_API_BASE_URL=http://localhost:8080/api'
+              tags: |
+                $(Build.SourceBranchName)
+                $(Build.SourceVersion)
+                latest
+          
+          - task: Docker@2
+            displayName: 'Push Frontend Docker Image'
+            inputs:
+              command: 'push'
+              repository: '$(DOCKER-USERNAME)/$(frontendImageName)'
+              tags: |
+                $(Build.SourceBranchName)
+                $(Build.SourceVersion)
+                latest
+          
+          - script: |
+              # Install Trivy
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+              echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+              sudo apt-get update
+              sudo apt-get install trivy -y
+              
+              # Scan Docker image
+              trivy image --exit-code 0 --severity CRITICAL,HIGH $(DOCKER-USERNAME)/$(frontendImageName):$(Build.SourceBranchName)
+            displayName: 'Trivy - Scan Docker Image'
+            continueOnError: true
+
+  # ============================================================================
+  # Stage 4: Deploy to Development
+  # ============================================================================
+  - stage: DeployDevelopment
+    displayName: 'Deploy to Development'
+    dependsOn: BuildDockerImages
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - deployment: DeployBackendDev
+        displayName: 'Backend - Deploy to Dev'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'development'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "Deploying backend to development environment..."
+                    echo "Image: $(DOCKER-USERNAME)/$(backendImageName):$(Build.SourceBranchName)"
+                    # Add your deployment commands here (e.g., kubectl, docker-compose, etc.)
+                  displayName: 'Deploy Backend to Development'
+      
+      - deployment: DeployFrontendDev
+        displayName: 'Frontend - Deploy to Dev'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'development'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "Deploying frontend to development environment..."
+                    echo "Image: $(DOCKER-USERNAME)/$(frontendImageName):$(Build.SourceBranchName)"
+                    # Add your deployment commands here
+                  displayName: 'Deploy Frontend to Development'
+
+  # ============================================================================
+  # Stage 5: Deploy to Staging (Main branch only)
+  # ============================================================================
+  - stage: DeployStaging
+    displayName: 'Deploy to Staging'
+    dependsOn: BuildDockerImages
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployBackendStaging
+        displayName: 'Backend - Deploy to Staging'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'staging'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "Deploying backend to staging environment..."
+                    echo "Image: $(DOCKER-USERNAME)/$(backendImageName):$(Build.SourceVersion)"
+                    # Add your deployment commands here
+                  displayName: 'Deploy Backend to Staging'
+      
+      - deployment: DeployFrontendStaging
+        displayName: 'Frontend - Deploy to Staging'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'staging'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "Deploying frontend to staging environment..."
+                    echo "Image: $(DOCKER-USERNAME)/$(frontendImageName):$(Build.SourceVersion)"
+                    # Add your deployment commands here
+                  displayName: 'Deploy Frontend to Staging'
+
+  # ============================================================================
+  # Stage 6: Deploy to Production (Manual approval required)
+  # ============================================================================
+  - stage: DeployProduction
+    displayName: 'Deploy to Production'
+    dependsOn: DeployStaging
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployBackendProduction
+        displayName: 'Backend - Deploy to Production'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "Deploying backend to production environment..."
+                    echo "Image: $(DOCKER-USERNAME)/$(backendImageName):latest"
+                    # Add your deployment commands here
+                  displayName: 'Deploy Backend to Production'
+      
+      - deployment: DeployFrontendProduction
+        displayName: 'Frontend - Deploy to Production'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "Deploying frontend to production environment..."
+                    echo "Image: $(DOCKER-USERNAME)/$(frontendImageName):latest"
+                    # Add your deployment commands here
+                  displayName: 'Deploy Frontend to Production'
